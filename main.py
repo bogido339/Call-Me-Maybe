@@ -1,97 +1,67 @@
 from llm_sdk.llm_sdk import Small_LLM_Model
-
-Amadeus = Small_LLM_Model()
-
-
-functions = [
-  {
-    "name": "fn_add_numbers",
-    "description": "Add two numbers together and return their sum.",
-    "parameters": {
-      "a": {
-        "type": "number"
-      },
-      "b": {
-        "type": "number"
-      }
-    },
-    "returns": {
-      "type": "number"
-    }
-  },
-  {
-    "name": "fn_greet",
-    "description": "Generate a greeting message for a person by name.",
-    "parameters": {
-      "name": {
-        "type": "string"
-      }
-    },
-    "returns": {
-      "type": "string"
-    }
-  },
-  {
-    "name": "fn_reverse_string",
-    "description": "Reverse a string and return the reversed result.",
-    "parameters": {
-      "s": {
-        "type": "string"
-      }
-    },
-    "returns": {
-      "type": "string"
-    }
-  },
-  {
-    "name": "fn_get_square_root",
-    "description": "Calculate the square root of a number.",
-    "parameters": {
-      "a": {
-        "type": "number"
-      }
-    },
-    "returns": {
-      "type": "number"
-    }
-  },
-  {
-    "name": "fn_substitute_string_with_regex",
-    "description": "Replace all occurrences matching a regex pattern in a string.",
-    "parameters": {
-      "source_string": {
-        "type": "string"
-      },
-      "regex": {
-        "type": "string"
-      },
-      "replacement": {
-        "type": "string"
-      }
-    },
-    "returns": {
-      "type": "string"
-    }
-  }
-]
-# input_ids = model.encode(
-#     f'In this list of functions {functions}, which function is best suited to answer the question: "What is the sum of -2222222 and +333333333333?"'
-# ).tolist()[0]
-
-input_ids = Amadeus.encode(
-    "In this text, 'What is the sum of 2 and 3?', what is the best word that can be used as an argument in any function?"
-).tolist()[0]
-
-print("Input IDs:", input_ids)
-
-while True:
+import json
 
 
-  logits = Amadeus.get_logits_from_input_ids(input_ids)
+def score_candidate(model, question, function_name):
+    prompt = f"""
+Question: {question}
 
-  big_logit = logits.index(max(logits))
+Selected function: {function_name}
+"""
 
-  decod = Amadeus.decode(big_logit)
-  print(decod)
+    input_ids = model.encode(prompt).tolist()[0]
 
-  input_ids.append(big_logit)
+    score = 0.0
+
+    for _ in range(20):
+        logits = model.get_logits_from_input_ids(input_ids)
+
+        # Use the highest logit as a simple score
+        score += max(logits)
+
+        next_token = logits.index(max(logits))
+        input_ids.append(next_token)
+
+    return score
+
+
+def main():
+    model = Small_LLM_Model()
+
+    with open(
+        "data/input/functions_definition.json",
+        "r",
+        encoding="utf-8"
+    ) as f:
+        data = json.load(f)
+
+    function_names = [
+        item["name"]
+        for item in data
+        if "name" in item
+    ]
+
+    with open("data/input/function_calling_tests.json", "r", encoding="utf-8") as f:
+      promts = json.load(f)
+
+    for p in promts:
+
+      question = f"Question: {p.get("prompt")}"
+
+      # question = "What is the sum of 2 and 3?"
+
+      best_function = None
+      best_score = float("-inf")
+
+      for fn in function_names:
+          score = score_candidate(model, question, fn)
+
+          if score > best_score:
+              best_score = score
+              best_function = fn
+
+      print("Selected function:", best_function)
+
+
+if __name__ == "__main__":
+    main()
