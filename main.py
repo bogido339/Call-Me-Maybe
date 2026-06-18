@@ -1,176 +1,136 @@
 from llm_sdk.llm_sdk import Small_LLM_Model
 import json
 
-def build_prompt(user_question: str, functions: list) -> str:
+
+def load_functions():
+    with open("data/input/functions_definition.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_prompts():
+    with open("data/input/function_calling_tests.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def build_function_name_prompt(user_question, functions):
     functions_list = ""
+
     for fn in functions:
         args = ", ".join(
             f'"{param_name}": {param_info["type"]}'
             for param_name, param_info in fn["parameters"].items()
         )
+
         functions_list += f'- {fn["name"]}: {{{args}}}\n'
 
-    return f"""You are a strict function-calling assistant.
+    return f"""
+You are a strict function-calling assistant.
+
 Available functions:
 {functions_list}
-User question: {user_question}
 
-Respond ONLY with valid JSON."""
+User question:
+{user_question}
+
+Respond ONLY with the function name.
+"""
 
 
-class LazyJSONDecoder:
-    def __init__(self, model: Small_LLM_Model, functions: list):
-        self.model = model
-        self.function_names = [fn["name"] for fn in functions]
-        self.vocab_cache = {}
-        self.eos_tokens = ["</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"]
-        
-    def _is_valid_continuation(self, generated_text: str, tstr: str) -> bool:
-            PART1 = '{"name": "'
-            PART2 = '", "arguments": {'
-            
-            proposed = generated_text + tstr
-            
-            if len(generated_text) < len(PART1):
-                return PART1.startswith(proposed) or proposed.startswith(PART1)
-                
-            after_part1 = generated_text[len(PART1):]
-            if '"' not in after_part1:
-                proposed_after = after_part1 + tstr
-                for fn in self.function_names:
-                    if fn.startswith(proposed_after) or proposed_after.startswith(fn + '"'):
-                        return True
-                return False
-                
-            name_end_idx = after_part1.index('"')
-            after_name = after_part1[name_end_idx:]
-            
-            if len(after_name) < len(PART2):
-                proposed_after = after_name + tstr
-                return PART2.startswith(proposed_after) or proposed_after.startswith(PART2)
-                
-            after_part2 = after_name[len(PART2):]
-            
-            if self._is_closed(after_part2):
-                return tstr in self.eos_tokens
+def build_function_args_prompt(user_question, selected_function):
+    return f"""
+You are a strict argument extraction assistant.
 
-            if tstr in self.eos_tokens or "```" in tstr or "\n" in tstr:
-                return False
+Function:
+{selected_function["name"]}
 
-            proposed_after = after_part2 + tstr
-            
-            inner_brackets = 1  
-            in_string = False
-            escape = False
-            
-            for i, char in enumerate(proposed_after):
-                if escape:
-                    escape = False
-                    continue
-                if char == '\\':
-                    escape = True
-                    continue
-                if char == '"':
-                    in_string = not in_string
-                    continue
-                if not in_string:
-                    if char == '{': 
-                        inner_brackets += 1
-                    elif char == '}': 
-                        inner_brackets -= 1
-                        
-                        if inner_brackets == 0:
-                            remainder = proposed_after[i+1:].strip()
-                            
-                            if remainder == "":
-                                return True
-                            elif remainder == "}":
-                                return True
-                            else:
-                                return False
-            
-            return inner_brackets < 0
+Parameters:
+{json.dumps(selected_function["parameters"], indent=2)}
 
-    def _is_closed(self, args_string: str) -> bool:
-        """Helper to check if BOTH dictionaries are successfully closed."""
-        inner_brackets = 1
-        in_string = False
-        escape = False
-        for i, char in enumerate(args_string):
-            if escape: escape = False; continue
-            if char == '\\': escape = True; continue
-            if char == '"': in_string = not in_string; continue
-            if not in_string:
-                if char == '{': inner_brackets += 1
-                elif char == '}': 
-                    inner_brackets -= 1
-                    if inner_brackets == 0:
-                        remainder = args_string[i+1:].strip()
-                        return remainder == "}"
-        return False
+User question:
+{user_question}
 
-    def get_valid_next_token(self, logits: list, generated_text: str) -> int:
-        indexed_logits = list(enumerate(logits))
-        indexed_logits.sort(key=lambda x: x[1], reverse=True)
-        
-        for token_id, _ in indexed_logits:
-            if token_id not in self.vocab_cache:
-                try:
-                    self.vocab_cache[token_id] = self.model.decode(token_id)
-                except Exception:
-                    self.vocab_cache[token_id] = ""
-                    
-            tstr = self.vocab_cache[token_id]
-            if not tstr:
-                continue
-                
-            if self._is_valid_continuation(generated_text, tstr):
-                return token_id
-                
-        return None
+Respond ONLY with a JSON object containing the arguments.
+"""
+
+def generate_text(model, prompt, max_tokens=100):
+    input_ids = model.encode(prompt).tolist()[0]
+
+    generated_text = ""
+
+    for _ in range(max_tokens):
+        logits = model.get_logits_from_input_ids(input_ids)
+
+        next_token = logits.index(max(logits))
+
+        input_ids.append(next_token)
+
+        token_text = model.decode(next_token)
+
+        if token_text in ["", "\n", "</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"]:
+            break
+
+        generated_text += token_text
+
+    return generated_text.strip()
+
+
+def select_function(model, user_question, functions):
+    prompt = build_function_name_prompt(user_question, functions)
+
+    function_name = generate_text(model, prompt)
+
+    return function_name
+
+def extract_arguments(model, user_question, function_name, functions):
+    selected_function = None
+
+    for fn in functions:
+        if fn["name"] == function_name:
+            selected_function = fn
+            break
+
+    if selected_function is None:
+        return {}
+
+    prompt = build_function_args_prompt(user_question, selected_function)
+
+    response = generate_text(model, prompt)
+
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        return {}
+
+def build_json_result(function_name, function_arguments):
+    return {
+        "function_name": function_name,
+        "arguments": function_arguments
+    }
+
+
+def process_question(model, user_question, functions):
+    function_name = select_function(model, user_question,functions)
+
+    function_arguments = extract_arguments(model, user_question, function_name, functions)
+
+    result = build_json_result(function_name, function_arguments)
+
+    return result
 
 def main():
-    Amadeus = Small_LLM_Model()
+    model = Small_LLM_Model()
 
-    with open("data/input/functions_definition.json", "r", encoding="utf-8") as f:
-        functions = json.load(f)
+    functions = load_functions()
 
-    with open("data/input/function_calling_tests.json", "r", encoding="utf-8") as f:
-        prompts = json.load(f)
+    prompts = load_prompts()
 
-    decoder = LazyJSONDecoder(model=Amadeus, functions=functions)
+    for item in prompts:
+        user_question = item["prompt"]
 
-    for user_question in prompts:
-        prompt = build_prompt(user_question.get("prompt"), functions)
-        input_ids = Amadeus.encode(prompt).tolist()[0]
+        result = process_question(model, user_question, functions)
 
-        generated_tokens = []
-        generated_text = ""
-        
-        for _ in range(100):
-            logits = Amadeus.get_logits_from_input_ids(input_ids)
-            
-            next_token = decoder.get_valid_next_token(logits, generated_text)
-            
-            if next_token is None:
-                break
-            
-            input_ids.append(next_token)
-            generated_tokens.append(next_token)
-            
-            token_text = decoder.vocab_cache[next_token]
-            generated_text += token_text
-            
-            if token_text in decoder.eos_tokens:
-                break
+        print(json.dumps(result, indent=4, ensure_ascii=False))
 
-        clean_text = generated_text
-        for eos in decoder.eos_tokens:
-            clean_text = clean_text.replace(eos, "")
-
-        print(f"Q: {user_question.get('prompt')}")
-        print(f"A: {clean_text.strip()}")
-        print("-" * 40)
 
 if __name__ == "__main__":
     main()
