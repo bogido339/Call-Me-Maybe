@@ -36,27 +36,18 @@ User question:
 Respond ONLY with the function name.
 """
 
-
-def build_function_args_prompt(user_question, selected_function):
-    arg_hints = ", ".join(
-        f'"{param_name}": <{param_info["type"]}>'
-        for param_name, param_info in selected_function["parameters"].items()
-    )
-
+def build_single_arg_prompt(user_question, selected_function, param_name, param_info):
     return f"""You are a strict argument extraction assistant.
 
 Function: {selected_function["name"]}
+Parameter: "{param_name}" of type {param_info["type"]}
 
-Extract the arguments from the user question and return ONLY a JSON object.
+Extract ONLY the value for the parameter from the user question and return a JSON object with a single key "{param_name}".
 Do NOT include explanations, markdown, or extra text.
-
-Expected format:
-{{{arg_hints}}}
 
 User question: {user_question}
 
 JSON:"""
-
 
 def generate_function_name(model, prompt: str, functions: List):
     input_ids = model.encode(prompt).tolist()[0]
@@ -93,48 +84,34 @@ def generate_function_name(model, prompt: str, functions: List):
 
     return generated_text.strip()
 
-def generate_function_args(model, prompt, function):
+
+def generate_function_args(model, prompt, function=None):
     input_ids = model.encode(prompt).tolist()[0]
 
     generated_text = ""
 
-    EOS_TOKENS = {"", "", "\n", "</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"}
+    EOS_TOKENS = {" ", "", "\n", "</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"}
 
-    allowed_characters = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '.', '{', '}']
-
-    allowed_tokens = {
-        token_id
-        for char in allowed_characters
-        for token_id in model.encode(char).tolist()[0]
-    }
-
-    for _ in range(100):
+    for _ in range(200):
         logits = model.get_logits_from_input_ids(input_ids)
 
-        masked_logits = [-float("inf")] * len(logits)
-
-        for token_id in allowed_tokens:
-            masked_logits[token_id] = logits[token_id]
-
-
-        next_token = masked_logits.index(max(masked_logits))
-
+        next_token = logits.index(max(logits))
 
         input_ids.append(next_token)
 
         token_text = model.decode(next_token)
-
-        print(token_text)
 
         if token_text in EOS_TOKENS:
             break
 
         generated_text += token_text
 
-        if generated_text.strip().startswith("{") and generated_text.strip().endswith("}"):
+        stripped = generated_text.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
             try:
-                json.loads(generated_text.strip())
-                break
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict) and len(parsed) >= 1:
+                    return stripped
             except json.JSONDecodeError:
                 pass
 
@@ -148,6 +125,7 @@ def select_function(model, user_question, functions):
 
     return function_name
 
+
 def extract_arguments(model, user_question, function_name, functions):
     selected_function = None
 
@@ -159,14 +137,34 @@ def extract_arguments(model, user_question, function_name, functions):
     if selected_function is None:
         return {}
    
-    prompt = build_function_args_prompt(user_question, selected_function)
+    arguments = {}
+    for param_name, param_info in selected_function["parameters"].items():
+        prompt = build_single_arg_prompt(user_question, selected_function, param_name, param_info)
 
-    response = generate_function_args(model, prompt, selected_function)
+        response = generate_function_args(model, prompt, selected_function)
 
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        return {}
+        try:
+            parsed = json.loads(response)
+            if isinstance(parsed, dict) and param_name in parsed:
+                arguments[param_name] = parsed[param_name]
+                continue
+        except json.JSONDecodeError:
+            pass
+
+        raw = response.strip()
+        if raw == "" or raw.lower() in {"null", "none"}:
+            arguments[param_name] = None
+            continue
+
+        try:
+            coerced = json.loads(raw)
+            arguments[param_name] = coerced
+            continue
+        except Exception:
+            arguments[param_name] = raw
+
+    return arguments
+
 
 def build_json_result(function_name, function_arguments):
     return {
@@ -183,6 +181,7 @@ def process_question(model, user_question, functions):
     result = build_json_result(function_name, function_arguments)
 
     return result
+
 
 def main():
     model = Small_LLM_Model()
