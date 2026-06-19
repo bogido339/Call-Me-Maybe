@@ -1,49 +1,41 @@
 from llm_sdk.llm_sdk import Small_LLM_Model
-import json
 
 
 def main():
     model = Small_LLM_Model()
 
-    with open("data/input/functions_definition.json", "r", encoding="utf-8") as f:
-        data = json.load(f)
+    prompt = "What is the color of the sky?"
 
-    function_names = [item["name"] for item in data if "name" in item]
+    input_ids = model.encode(prompt).tolist()[0]
 
-    with open("data/input/function_calling_tests.json", "r", encoding="utf-8") as f:
-        promts = json.load(f)
+    allowed_tokens = []
 
-    for p in promts:
-        prompt = f"""
-    Question: {p.get("prompt")}
+    choices = ["Blue", "Light blue", "Gray", "Orange", "Black"]
 
-    Available functions:
-    {", ".join(function_names)}
+    for choice in choices:
+        token_ids = model.encode(choice).tolist()[0]
+        allowed_tokens.append(token_ids[0])
 
-    Choose the best function name from the list above.
-    Return only the function name.
-    """
+    result = ""
 
-        input_ids = model.encode(prompt).tolist()[0]
+    for _ in range(100):
+        logits = model.get_logits_from_input_ids(input_ids)
 
-        output = []
+        masked_logits = [-float("inf")] * len(logits)
 
-        max_tokens = 20
+        for token_id in allowed_tokens:
+            masked_logits[token_id] = logits[token_id]
 
-        for _ in range(max_tokens):
-            logits = model.get_logits_from_input_ids(input_ids)
+        next_token = masked_logits.index(max(masked_logits))
 
-            next_token = logits.index(max(logits))
-            token_text = model.decode(next_token)
+        token_text = model.decode([next_token])
+        if token_text in ["", "\n"]:
+            break
 
-            output.append(token_text)
-            input_ids.append(next_token)
+        result += token_text
+        input_ids.append(next_token)
 
-            if token_text in ["\n", ".", "</s>"]:
-                break
-
-        result = "".join(output).strip()
-        print("Selected function:", result)
+    print(result)
 
 
 if __name__ == "__main__":

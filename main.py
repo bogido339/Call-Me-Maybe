@@ -1,5 +1,6 @@
 from llm_sdk.llm_sdk import Small_LLM_Model
 import json
+from typing import List
 
 
 def load_functions():
@@ -37,27 +38,69 @@ Respond ONLY with the function name.
 
 
 def build_function_args_prompt(user_question, selected_function):
-    return f"""
-You are a strict argument extraction assistant.
+    arg_hints = ", ".join(
+        f'"{param_name}": <{param_info["type"]}>'
+        for param_name, param_info in selected_function["parameters"].items()
+    )
 
-Function:
-{selected_function["name"]}
+    return f"""You are a strict argument extraction assistant.
 
-Parameters:
-{json.dumps(selected_function["parameters"], indent=2)}
+Function: {selected_function["name"]}
 
-User question:
-{user_question}
+Extract the arguments from the user question and return ONLY a JSON object.
+Do NOT include explanations, markdown, or extra text.
 
-Respond ONLY with a JSON object containing the arguments.
-"""
+Expected format:
+{{{arg_hints}}}
 
-def generate_text(model, prompt, max_tokens=100):
+User question: {user_question}
+
+JSON:"""
+
+
+def generate_function_name(model, prompt: str, functions: List):
     input_ids = model.encode(prompt).tolist()[0]
 
     generated_text = ""
 
-    for _ in range(max_tokens):
+    allowed_functions = [fn.get("name") for fn in functions]
+
+    allowed_tokens = {
+        token_id
+        for fn in allowed_functions
+        for token_id in model.encode(fn).tolist()[0]
+    }
+
+
+    for _ in range(100):
+        logits = model.get_logits_from_input_ids(input_ids)
+
+        masked_logits = [-float("inf")] * len(logits)
+
+        for token_id in allowed_tokens:
+            masked_logits[token_id] = logits[token_id]
+
+        next_token = masked_logits.index(max(masked_logits))
+
+        input_ids.append(next_token)
+
+        token_text = model.decode(next_token)
+
+        generated_text += token_text
+
+        if generated_text in allowed_functions:
+            break
+
+    return generated_text.strip()
+
+def generate_function_args(model, prompt, function):
+    input_ids = model.encode(prompt).tolist()[0]
+
+    generated_text = ""
+
+    EOS_TOKENS = {"", "", "\n", "</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"}
+
+    for _ in range(100):
         logits = model.get_logits_from_input_ids(input_ids)
 
         next_token = logits.index(max(logits))
@@ -66,10 +109,17 @@ def generate_text(model, prompt, max_tokens=100):
 
         token_text = model.decode(next_token)
 
-        if token_text in ["", "\n", "</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"]:
+        if token_text in EOS_TOKENS:
             break
 
         generated_text += token_text
+
+        if generated_text.strip().startswith("{") and generated_text.strip().endswith("}"):
+            try:
+                json.loads(generated_text.strip())
+                break
+            except json.JSONDecodeError:
+                pass
 
     return generated_text.strip()
 
@@ -77,7 +127,7 @@ def generate_text(model, prompt, max_tokens=100):
 def select_function(model, user_question, functions):
     prompt = build_function_name_prompt(user_question, functions)
 
-    function_name = generate_text(model, prompt)
+    function_name = generate_function_name(model, prompt, functions)
 
     return function_name
 
@@ -91,10 +141,10 @@ def extract_arguments(model, user_question, function_name, functions):
 
     if selected_function is None:
         return {}
-
+   
     prompt = build_function_args_prompt(user_question, selected_function)
 
-    response = generate_text(model, prompt)
+    response = generate_function_args(model, prompt, selected_function)
 
     try:
         return json.loads(response)
@@ -121,16 +171,17 @@ def main():
     model = Small_LLM_Model()
 
     functions = load_functions()
-
     prompts = load_prompts()
 
-    for item in prompts:
-        user_question = item["prompt"]
+    with open("output.json", "w", encoding="utf-8") as f:
+        for item in prompts:
+            user_question = item["prompt"]
 
-        result = process_question(model, user_question, functions)
+            result = process_question(model, user_question, functions)
 
-        print(json.dumps(result, indent=4, ensure_ascii=False))
+            f.write(json.dumps(result, ensure_ascii=False) + "\n")
 
+            print(json.dumps(result, indent=4, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
