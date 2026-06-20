@@ -7,11 +7,9 @@ def load_functions():
     with open("data/input/functions_definition.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
-
 def load_prompts():
     with open("data/input/function_calling_tests.json", "r", encoding="utf-8") as f:
         return json.load(f)
-
 
 def build_function_name_prompt(user_question, functions):
     functions_list = ""
@@ -36,27 +34,24 @@ User question:
 Respond ONLY with the function name.
 """
 
-
 def build_function_args_prompt(user_question, selected_function):
     arg_hints = ", ".join(
         f'"{param_name}": <{param_info["type"]}>'
         for param_name, param_info in selected_function["parameters"].items()
     )
 
-    return f"""You are a strict argument extraction assistant.
+    return f"""You are a professional Function Argument Extraction Engine.
 
-Function: {selected_function["name"]}
+Function:
+{selected_function["name"]}
 
-Extract the arguments from the user question and return ONLY a JSON object.
-Do NOT include explanations, markdown, or extra text.
-
-Expected format:
+Expected Parameters:
 {{{arg_hints}}}
 
-User question: {user_question}
+User Request:
+{user_question}
 
-JSON:"""
-
+Parameters:\n"""
 
 def generate_function_name(model, prompt: str, functions: List):
     input_ids = model.encode(prompt).tolist()[0]
@@ -93,14 +88,13 @@ def generate_function_name(model, prompt: str, functions: List):
 
     return generated_text.strip()
 
-def generate_function_args(model, prompt, function):
+def generate_function_args(model, prompt, types):
     input_ids = model.encode(prompt).tolist()[0]
-
     generated_text = ""
+    
+    EOS_TOKENS = {",", "\n", "}", "</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"}
 
-    EOS_TOKENS = {"", "", "\n", "</s>", "<|end|>", "<|im_end|>", "<|endoftext|>"}
-
-    allowed_characters = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '.', '{', '}']
+    allowed_characters = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '.', '{', '}', ",", "\n"]
 
     allowed_tokens = {
         token_id
@@ -111,32 +105,30 @@ def generate_function_args(model, prompt, function):
     for _ in range(100):
         logits = model.get_logits_from_input_ids(input_ids)
 
-        masked_logits = [-float("inf")] * len(logits)
+        if types == "number" or types == "integer" or types == "boolean":
+            masked_logits = [-float("inf")] * len(logits)
 
-        for token_id in allowed_tokens:
-            masked_logits[token_id] = logits[token_id]
+            for token_id in allowed_tokens:
+                masked_logits[token_id] = logits[token_id]
 
-
-        next_token = masked_logits.index(max(masked_logits))
-
-
+            next_token = masked_logits.index(max(masked_logits))
+        else:
+            next_token = logits.index(max(logits))
+            
         input_ids.append(next_token)
-
+        
         token_text = model.decode(next_token)
 
-        print(token_text)
-
-        if token_text in EOS_TOKENS:
+        if any(eos in token_text for eos in EOS_TOKENS):
+            for eos in EOS_TOKENS:
+                if eos in token_text:
+                    token_text = token_text.split(eos)[0]
+                    break
+            
+            generated_text += token_text
             break
 
         generated_text += token_text
-
-        if generated_text.strip().startswith("{") and generated_text.strip().endswith("}"):
-            try:
-                json.loads(generated_text.strip())
-                break
-            except json.JSONDecodeError:
-                pass
 
     return generated_text.strip()
 
@@ -158,20 +150,46 @@ def extract_arguments(model, user_question, function_name, functions):
 
     if selected_function is None:
         return {}
-   
+
     prompt = build_function_args_prompt(user_question, selected_function)
+    
+    prompt += " {" 
+    res = {}
+    items = list(selected_function["parameters"].items())
 
-    response = generate_function_args(model, prompt, selected_function)
+    
+    for i, element in enumerate(items):
 
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        return {}
+        name, types = element
+        prompt += f'"{name}":'
+        
+        response = generate_function_args(model, prompt, types["type"])
+        
+        response = response.strip()
+        response = response.rstrip(",} \n")
+        response = response.strip("\"'")
 
-def build_json_result(function_name, function_arguments):
+        if types["type"] == "number":
+            res[name] = float(response)
+        elif types["type"] == "integer":
+            res[name] = int(response)
+        elif types["type"] == "boolean":
+            res[name] = bool(response)
+        else:
+            res[name] = response
+        
+        prompt += f' "{response}"'
+        
+        if i < len(element) - 1:
+            prompt += ", "
+
+    return res
+
+def build_json_result(prompt, function_name, function_arguments):
     return {
-        "function_name": function_name,
-        "arguments": function_arguments
+        "prompt": prompt,
+        "name": function_name,
+        "parameters": function_arguments
     }
 
 
@@ -180,7 +198,7 @@ def process_question(model, user_question, functions):
 
     function_arguments = extract_arguments(model, user_question, function_name, functions)
 
-    result = build_json_result(function_name, function_arguments)
+    result = build_json_result(user_question, function_name, function_arguments)
 
     return result
 
@@ -190,15 +208,19 @@ def main():
     functions = load_functions()
     prompts = load_prompts()
 
+    results = []
+
+    for item in prompts:
+        user_question = item["prompt"]
+
+        output = process_question(model, user_question, functions)
+        results.append(output)
+
+        print(json.dumps(output, indent=4, ensure_ascii=False))
+
     with open("output.json", "w", encoding="utf-8") as f:
-        for item in prompts:
-            user_question = item["prompt"]
+        json.dump(results, f, indent=4, ensure_ascii=False)
 
-            result = process_question(model, user_question, functions)
-
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
-
-            print(json.dumps(result, indent=4, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
