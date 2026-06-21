@@ -1,7 +1,6 @@
 import json
 import argparse
 import os
-import sys
 from argparse import Namespace
 
 from llm_sdk.llm_sdk import Small_LLM_Model
@@ -36,42 +35,33 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     """Entry point: load inputs, run the pipeline, write results to output."""
+
     args = parse_args()
 
-    try:
-        model = Small_LLM_Model()
-        functions = load_functions(args.functions_definition)
-        prompts = load_prompts(args.input)
-    except (FileNotFoundError, ValueError, TypeError, KeyError, OSError) as e:
-        print(f"[ERROR] Failed to initialise: {e}", file=sys.stderr)
-        sys.exit(1)
+    model = Small_LLM_Model()
+    functions = load_functions(args.functions_definition)
+    prompts = load_prompts(args.input)
 
     results = []
 
     for item in prompts:
         user_question: str = item["prompt"]
-        try:
-            output = process_question(model, user_question, functions)
-        except Exception as e:
-            print(
-                f"[ERROR] Failed to process prompt '{user_question}': {e}",
-                file=sys.stderr,
-            )
-            continue
+        output = process_question(model, user_question, functions)
 
         results.append(output)
         print(json.dumps(output, indent=4, ensure_ascii=False))
 
-    try:
-        output_dir = os.path.dirname(args.output)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=4, ensure_ascii=False)
-    except OSError as e:
-        print(f"[ERROR] Failed to write output file: {e}", file=sys.stderr)
-        sys.exit(1)
+    output_dir = os.path.dirname(args.output)
+
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    with open(args.output, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"{type(e).__name__}: {e}")

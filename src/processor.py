@@ -49,6 +49,7 @@ def extract_arguments(
     res: dict[str, Any] = {}
     items = list(selected_function["parameters"].items())
 
+
     for i, element in enumerate(items):
         name, types = element
         prompt += f'"{name}":'
@@ -83,8 +84,8 @@ def build_json_result(
     """Assemble the final output dict from prompt, name, and arguments."""
     return {
         "prompt": prompt,
-        "fn_name": function_name,
-        "args": function_arguments,
+        "name": function_name,
+        "parameters": function_arguments,
     }
 
 

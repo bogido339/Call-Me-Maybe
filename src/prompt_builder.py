@@ -31,7 +31,6 @@ User question:
 Respond ONLY with the function name.
 """
 
-
 def build_function_args_prompt(
     user_question: str,
     selected_function: dict[str, Any],

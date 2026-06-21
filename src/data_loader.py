@@ -3,6 +3,10 @@ import os
 from typing import Any
 
 
+class ParserError(Exception):
+    pass
+
+
 VALID_TYPES = {"string", "number", "integer", "boolean"}
 
 
@@ -11,7 +15,7 @@ def load_functions(
 ) -> list[dict[str, Any]]:
     """Load and validate the functions definition JSON file."""
     if not path or not isinstance(path, str):
-        raise ValueError(f"Invalid path provided: {repr(path)}")
+        raise ParserError(f"Invalid path provided: {repr(path)}")
 
     if not os.path.exists(path):
         raise FileNotFoundError(
@@ -29,7 +33,7 @@ def load_functions(
         )
 
     if os.path.getsize(path) == 0:
-        raise ValueError(
+        raise ParserError(
             f"Functions definition file is empty: '{path}'"
         )
 
@@ -37,11 +41,11 @@ def load_functions(
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
-        raise ValueError(
+        raise ParserError(
             f"Invalid JSON in functions definition file '{path}': {e}"
         )
     except UnicodeDecodeError as e:
-        raise ValueError(
+        raise ParserError(
             f"Encoding error in file '{path}' (expected UTF-8): {e}"
         )
     except OSError as e:
@@ -54,7 +58,7 @@ def load_functions(
         )
 
     if len(data) == 0:
-        raise ValueError(
+        raise ParserError(
             "Functions definition list is empty — no functions to call."
         )
 
@@ -72,7 +76,7 @@ def load_functions(
                 )
 
         if not isinstance(fn["name"], str) or not fn["name"].strip():
-            raise ValueError(
+            raise ParserError(
                 f"Function at index {i} has an invalid "
                 f"'name': {repr(fn['name'])}"
             )
@@ -81,19 +85,19 @@ def load_functions(
             not isinstance(fn["description"], str)
             or not fn["description"].strip()
         ):
-            raise ValueError(
+            raise ParserError(
                 f"Function '{fn['name']}' has an invalid 'description'."
             )
 
         if not isinstance(fn["parameters"], dict):
-            raise TypeError(
+            raise ParserError(
                 f"Function '{fn['name']}': "
                 f"'parameters' must be a JSON object."
             )
 
         for param_name, param_info in fn["parameters"].items():
             if not isinstance(param_info, dict):
-                raise TypeError(
+                raise ParserError(
                     f"Function '{fn['name']}': parameter '{param_name}' "
                     f"must be a JSON object."
                 )
@@ -103,7 +107,7 @@ def load_functions(
                     f"is missing 'type'."
                 )
             if param_info["type"] not in VALID_TYPES:
-                raise ValueError(
+                raise ParserError(
                     f"Function '{fn['name']}': parameter '{param_name}' "
                     f"has unsupported type '{param_info['type']}'. "
                     f"Must be one of: {VALID_TYPES}"
@@ -113,7 +117,7 @@ def load_functions(
             not isinstance(fn["returns"], dict)
             or "type" not in fn["returns"]
         ):
-            raise ValueError(
+            raise ParserError(
                 f"Function '{fn['name']}': 'returns' must have a 'type' field."
             )
 
@@ -125,7 +129,7 @@ def load_prompts(
 ) -> list[dict[str, Any]]:
     """Load and validate the prompts JSON file."""
     if not path or not isinstance(path, str):
-        raise ValueError(f"Invalid path provided: {repr(path)}")
+        raise ParserError(f"Invalid path provided: {repr(path)}")
 
     if not os.path.exists(path):
         raise FileNotFoundError(f"Prompts file not found: '{path}'")
@@ -139,17 +143,17 @@ def load_prompts(
         raise PermissionError(f"No read permission for file: '{path}'")
 
     if os.path.getsize(path) == 0:
-        raise ValueError(f"Prompts file is empty: '{path}'")
+        raise ParserError(f"Prompts file is empty: '{path}'")
 
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
-        raise ValueError(
+        raise ParserError(
             f"Invalid JSON in prompts file '{path}': {e}"
         )
     except UnicodeDecodeError as e:
-        raise ValueError(
+        raise ParserError(
             f"Encoding error in file '{path}' (expected UTF-8): {e}"
         )
     except OSError as e:
@@ -161,7 +165,7 @@ def load_prompts(
         )
 
     if len(data) == 0:
-        raise ValueError("Prompts list is empty — nothing to process.")
+        raise ParserError("Prompts list is empty — nothing to process.")
 
     for i, item in enumerate(data):
         if not isinstance(item, dict):
@@ -169,7 +173,6 @@ def load_prompts(
                 f"Prompt at index {i} must be a JSON object, "
                 f"got: {type(item).__name__}"
             )
-
         if "prompt" not in item:
             raise KeyError(
                 f"Prompt at index {i} is missing required key: 'prompt'"
@@ -179,7 +182,7 @@ def load_prompts(
             not isinstance(item["prompt"], str)
             or not item["prompt"].strip()
         ):
-            raise ValueError(
+            raise ParserError(
                 f"Prompt at index {i} has an empty or invalid 'prompt' value."
             )
 
