@@ -1,6 +1,8 @@
 from typing import Any
 
 
+from typing import Any
+
 def build_function_name_prompt(
     user_question: str,
     functions: list[dict[str, Any]],
@@ -12,15 +14,12 @@ def build_function_name_prompt(
     """
     functions_list = ""
 
-    for fn in functions:
-        args = ", ".join(
-            f'"{param_name}": {param_info["type"]}'
-            for param_name, param_info in fn["parameters"].items()
-        )
-        functions_list += f'- {fn["name"]}: {{{args}}}\n'
+    functions_list = "\n".join(
+        f'[{fn["name"]}: {fn["description"]}]'
+        for fn in functions
+    )
 
-    return f"""
-You are a strict function-calling assistant.
+    return f"""You are a strict function-calling assistant
 
 Available functions:
 {functions_list}
@@ -28,8 +27,9 @@ Available functions:
 User question:
 {user_question}
 
-Respond ONLY with the function name.
+function name:
 """
+
 
 def build_function_args_prompt(
     user_question: str,

@@ -49,7 +49,6 @@ def extract_arguments(
     res: dict[str, Any] = {}
     items = list(selected_function["parameters"].items())
 
-
     for i, element in enumerate(items):
         name, types = element
         prompt += f'"{name}":'

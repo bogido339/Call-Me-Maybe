@@ -12,7 +12,7 @@ The core challenge is producing **100% valid, structured JSON output** from a mo
 
 ### Goal
 
-> Transform free-text user requests into structured JSON function calls using constrained decoding over a raw language model.
+> Transform free-text user requests into structured JSON function calls using constrained token-level decoding over a raw language model.
 
 ### Supported Functions
 
@@ -147,7 +147,6 @@ call-me-maybe/
 ├── llm_sdk/
 ├── Makefile
 ├── pyproject.toml
-├── uv.lock
 └── README.md
 ```
 
@@ -240,9 +239,10 @@ Models sometimes generate `"3.0"` for an integer field or whitespace-padded valu
 - [Function Calling in OpenAI API](https://platform.openai.com/docs/guides/function-calling) — reference for output format design
 
 ### AI Usage
-AI tools were used in a limited and controlled manner for the following tasks:
-- Generating sample and test prompts.
-- Brainstorming implementation ideas and alternative approaches.
-- Assisting with debugging and identifying potential issues.
-- Suggesting code improvements and refactoring opportunities.
-- Improving documentation and writing docstrings.
+Claude (Anthropic) was used as a development assistant in this project for the following tasks:
+- **Code review and refactoring**: restructuring the monolithic script into modular files (`data_loader`, `prompt_builder`, `generator`, `processor`).
+- **Error handling**: generating comprehensive error handling for the `data_loader` module covering path validation, JSON parsing, and schema validation.
+- **Makefile**: drafting the Makefile with all required rules (`install`, `run`, `debug`, `clean`, `lint`, `lint-strict`).
+- **README**: drafting this document based on project requirements.
+
+All algorithmic logic (constrained decoding, token masking, argument extraction pipeline) was written and validated by the student.

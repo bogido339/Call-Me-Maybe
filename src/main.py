@@ -1,6 +1,7 @@
 import json
 import argparse
 import os
+import sys
 from argparse import Namespace
 
 from llm_sdk.llm_sdk import Small_LLM_Model
@@ -35,7 +36,6 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     """Entry point: load inputs, run the pipeline, write results to output."""
-
     args = parse_args()
 
     model = Small_LLM_Model()
@@ -47,21 +47,20 @@ def main() -> None:
     for item in prompts:
         user_question: str = item["prompt"]
         output = process_question(model, user_question, functions)
-
+      
         results.append(output)
         print(json.dumps(output, indent=4, ensure_ascii=False))
 
     output_dir = os.path.dirname(args.output)
-
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
+
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"{type(e).__name__}: {e}")
+        print(f"ERROR: {type(e).__name__}: {e}")
