@@ -14,9 +14,6 @@ def load_functions(
     path: str = "data/input/functions_definition.json",
 ) -> list[dict[str, Any]]:
     """Load and validate the functions definition JSON file."""
-
-    func_names: list[str] = []
-
     if not path or not isinstance(path, str):
         raise ParseError(f"Invalid path provided: {repr(path)}")
 
@@ -41,7 +38,7 @@ def load_functions(
         )
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r") as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
         raise ParseError(
@@ -83,16 +80,6 @@ def load_functions(
                 f"Function at index {i} has an invalid "
                 f"'name': {repr(fn['name'])}"
             )
-
-        
-        for existing_name in func_names:
-            if (fn["name"].startswith(existing_name)):
-                raise ParseError(
-                   f'Invalid function name "{fn["name"]}": it starts with the '
-                   f'function name "{existing_name}". Choose a name that does '
-                   'not use another function name as its prefix.'
-                )
-        func_names.append(fn["name"])
 
         if (
             not isinstance(fn["description"], str)

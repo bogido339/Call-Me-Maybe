@@ -2,13 +2,30 @@
 name = "call-me-maybe"
 version = "1.0.0"
 description = "Introduction to function calling in LLMs using constrained decoding"
+readme = "README.md"
 requires-python = ">=3.12"
+
 dependencies = [
-    "flake8>=7.3.0",
-    "mypy>=2.1.0",
-    "numpy",
-    "pydantic",
+    "numpy>=2.0.0",
+    "pydantic>=2.0.0",
+    "torch>=2.0.0",
+    "transformers>=4.40.0",
+    "huggingface-hub>=0.20.0",
 ]
 
-[tool.uv]
-package = false
+[dependency-groups]
+dev = [
+    "mypy>=1.16.0",
+    "flake8>=7.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["llm_sdk"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

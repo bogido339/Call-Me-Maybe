@@ -1,11 +1,8 @@
 import json
 import argparse
 import os
-import sys
 from argparse import Namespace
-
 from llm_sdk.llm_sdk import Small_LLM_Model
-
 from src.data_loader import load_functions, load_prompts
 from src.processor import process_question
 
@@ -47,7 +44,6 @@ def main() -> None:
     for item in prompts:
         user_question: str = item["prompt"]
         output = process_question(model, user_question, functions)
-      
         results.append(output)
         print(json.dumps(output, indent=4, ensure_ascii=False))
 
@@ -58,9 +54,8 @@ def main() -> None:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
 
-
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"ERROR: {type(e).__name__}: {e}")
+        print(f"{type(e).__name__}: {e}")

@@ -4,4 +4,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"ERROR: {type(e).__name__}: {e}")
+        print(f"{type(e).__name__}: {e}")

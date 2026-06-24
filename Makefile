@@ -1,7 +1,7 @@
 .PHONY: install run debug clean lint lint-strict
 
 install:
-	pip install uv
+	curl -LsSf https://astral.sh/uv/install.sh | sh
 	uv sync
 
 run:
@@ -18,9 +18,9 @@ clean:
 	find . -type f -name "*.pyo" -delete
 
 lint:
-	flake8 src
-	mypy src --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+	uv run flake8 src
+	uv run mypy src --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 lint-strict:
-	flake8 src
-	mypy src --strict
+	uv run flake8 src
+	uv run mypy src --strict

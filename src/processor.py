@@ -1,4 +1,6 @@
 from typing import Any
+from llm_sdk.llm_sdk import Small_LLM_Model
+
 
 from src.prompt_builder import (
     build_function_name_prompt,
@@ -8,7 +10,7 @@ from src.generator import generate_function_name, generate_function_args
 
 
 def select_function(
-    model: Any,
+    model: Small_LLM_Model,
     user_question: str,
     functions: list[dict[str, Any]],
 ) -> str:
@@ -23,7 +25,7 @@ def select_function(
 
 
 def extract_arguments(
-    model: Any,
+    model: Small_LLM_Model,
     user_question: str,
     function_name: str,
     functions: list[dict[str, Any]],
@@ -89,7 +91,7 @@ def build_json_result(
 
 
 def process_question(
-    model: Any,
+    model: Small_LLM_Model,
     user_question: str,
     functions: list[dict[str, Any]],
 ) -> dict[str, Any]:

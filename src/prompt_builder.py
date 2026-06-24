@@ -1,8 +1,6 @@
 from typing import Any
 
 
-from typing import Any
-
 def build_function_name_prompt(
     user_question: str,
     functions: list[dict[str, Any]],

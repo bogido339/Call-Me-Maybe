@@ -1,8 +1,9 @@
+from llm_sdk.llm_sdk import Small_LLM_Model
 from typing import Any
 
 
 def generate_function_name(
-    model: Any,
+    model: Small_LLM_Model,
     prompt: str,
     functions: list[dict[str, Any]],
 ) -> str:
@@ -18,6 +19,7 @@ def generate_function_name(
     allowed_functions: list[str] = [
         str(fn["name"]) for fn in functions if "name" in fn
     ]
+    allowed_functions.append("\n")
 
     allowed_tokens: set[int] = {
         token_id
@@ -36,17 +38,16 @@ def generate_function_name(
         next_token: int = masked_logits.index(max(masked_logits))
         input_ids.append(next_token)
 
-        token_text: str = model.decode(next_token)
-        generated_text += token_text
-
-        if generated_text in allowed_functions:
+        token_text: str = model.decode([next_token])
+        if token_text == '\n':
             break
+        generated_text += token_text
 
     return generated_text.strip()
 
 
 def generate_function_args(
-    model: Any,
+    model: Small_LLM_Model,
     prompt: str,
     types: str,
 ) -> str:
@@ -88,7 +89,7 @@ def generate_function_args(
             next_token = logits.index(max(logits))
 
         input_ids.append(next_token)
-        token_text: str = model.decode(next_token)
+        token_text: str = model.decode([next_token])
 
         if any(eos in token_text for eos in eos_tokens):
             for eos in eos_tokens:
