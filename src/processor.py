@@ -1,5 +1,6 @@
 from typing import Any
 from llm_sdk.llm_sdk import Small_LLM_Model
+from src.models import FunctionCall
 
 
 from src.prompt_builder import (
@@ -79,15 +80,16 @@ def extract_arguments(
 
 def build_json_result(
     prompt: str,
-    function_name: str,
-    function_arguments: dict[str, Any],
+    name: str,
+    parameters: dict[str, Any],
 ) -> dict[str, Any]:
     """Assemble the final output dict from prompt, name, and arguments."""
-    return {
-        "prompt": prompt,
-        "name": function_name,
-        "parameters": function_arguments,
-    }
+    result = FunctionCall(
+        prompt=prompt,
+        fn_name=name,
+        args=parameters,
+    )
+    return result.model_dump()
 
 
 def process_question(

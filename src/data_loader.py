@@ -1,6 +1,8 @@
 import json
 import os
 from typing import Any
+from pydantic import ValidationError
+from src.models import FunctionDefinition, Prompt
 
 
 VALID_TYPES = {"string", "number", "integer", "boolean"}
@@ -121,7 +123,12 @@ def load_functions(
                 f"Function '{fn['name']}': 'returns' must have a 'type' field."
             )
 
-    return data
+    try:
+        validated = [FunctionDefinition(**fn) for fn in data]
+    except ValidationError as e:
+        raise ValueError(f"Invalid function definition: {e}")
+
+    return [fn.model_dump() for fn in validated]
 
 
 def load_prompts(
@@ -187,4 +194,9 @@ def load_prompts(
                 f"Prompt at index {i} has an empty or invalid 'prompt' value."
             )
 
-    return data
+    try:
+        validated = [Prompt(**item) for item in data]
+    except ValidationError as e:
+        raise ValueError(f"Invalid prompt entry: {e}")
+
+    return [p.model_dump() for p in validated]
