@@ -1,139 +1,71 @@
 *This project has been created as part of the 42 curriculum by mbougajd.*
 
----
-
 # Call Me Maybe — Introduction to Function Calling in LLMs
 
 ## Description
 
-**Call Me Maybe** is a Python project that bridges natural language and structured function calls using a small language model (Qwen/Qwen3-0.6B, ~600M parameters). Given a user prompt like `"What is the sum of 2 and 3?"`, the system automatically selects the correct function (`fn_add_numbers`) and extracts its arguments (`{"a": 2.0, "b": 3.0}`) — without relying on any external function-calling API.
+**Call Me Maybe** is a Python project that demonstrates how a local Large Language Model (LLM) can perform function calling without relying on external APIs.
 
-The core challenge is producing **100% valid, structured JSON output** from a model that was not fine-tuned for this task. This is solved through **constrained decoding**: at each generation step, the model's token probabilities are masked so only valid tokens can be selected, guaranteeing well-formed output by construction.
+The program receives a natural language request and converts it into a structured JSON function call matching one of the available function definitions.
 
-### Goal
+For example:
 
-> Transform free-text user requests into structured JSON function calls using constrained token-level decoding over a raw language model.
+**Input**
 
-### Supported Functions
+```text
+What is the sum of 2 and 3?
+```
 
-| Function | Description |
-|---|---|
-| `fn_add_numbers` | Add two numbers |
-| `fn_greet` | Greet a person by name |
-| `fn_reverse_string` | Reverse a string |
-| `fn_get_square_root` | Compute the square root of a number |
-| `fn_substitute_string_with_regex` | Replace patterns in a string via regex |
-
----
-
-## Algorithm Explanation
-
-The pipeline runs in two sequential constrained decoding passes:
-
-### Pass 1 — Function Name Selection
-
-1. A prompt is built listing all available function signatures.
-2. The model generates tokens one by one.
-3. At each step, a **token mask** is applied: only token IDs that are part of a valid function name are kept (`-inf` for all others).
-4. Generation stops as soon as the output exactly matches one of the known function names.
-
-This guarantees the model **can only output a valid function name** — hallucinated or partial names are impossible.
-
-### Pass 2 — Argument Extraction
-
-For each parameter of the selected function:
-
-1. A prompt is built with the function signature and parameter hints, followed by the partial JSON built so far.
-2. The model generates the value for that parameter.
-3. **Type-aware masking** is applied:
-   - For `number`, `integer`, `boolean`: only digit characters (`0–9`), `.`, `-` are allowed.
-   - For `string`: unconstrained generation (the model outputs freely).
-4. Generation stops at an EOS token (`,`, `}`, `\n`, `</s>`, etc.).
-5. The raw text is cast to the correct Python type (`float`, `int`, `bool`, `str`).
-6. The parameter is appended to the prompt context before moving to the next one, giving the model full running context.
-
-### Output Format
+**Output**
 
 ```json
-[
-  {
-    "prompt": "What is the sum of 2 and 3?",
-    "fn_name": "fn_add_numbers",
-    "args": {
-      "a": 2.0,
-      "b": 3.0
-    }
+{
+  "fn_name": "fn_add_numbers",
+  "args": {
+    "a": 2,
+    "b": 3
   }
-]
+}
 ```
+
+The project uses **constrained decoding** to ensure that every generated output follows both the required JSON structure and the function schema.
 
 ---
 
-## Design Decisions
+## Goal
 
-### Why constrained decoding instead of prompting?
-Pure prompting (asking the model to "output JSON") fails frequently with small models — they hallucinate keys, omit brackets, or output prose. Constrained decoding enforces structure at the **token probability level**, making invalid output mathematically impossible for name selection and numerically typed arguments.
+The objective of this project is to bridge natural language understanding and structured function execution.
 
-### Why two separate passes?
-Separating function name selection from argument extraction allows each pass to use a tightly scoped prompt and mask set. A single combined pass would require a far more complex grammar constraint and is harder to debug.
+Instead of generating free-form text, the model must:
 
-### Why append each argument to the prompt before generating the next?
-This gives the model full **running context** of what has already been extracted, improving coherence for multi-argument functions (e.g., `fn_substitute_string_with_regex` with 3 parameters).
-
-### Why `uv` as the package manager?
-`uv` is significantly faster than `pip` for dependency resolution and installation, and `pyproject.toml` provides a single source of truth for dependencies — cleaner than a bare `requirements.txt`.
-
-### Why Pydantic for validation?
-The evaluation rubric requires it. Pydantic provides declarative, type-safe validation of input structures with clear error messages, replacing manual `isinstance` checks.
+1. Select the correct function from a predefined list.
+2. Extract the required arguments from the user's request.
+3. Generate a valid JSON object matching the expected schema.
+4. Prevent invalid outputs through constrained decoding.
 
 ---
 
-## Instructions
+## Features
 
-### Requirements
+* Local LLM inference
+* Function selection from predefined definitions
+* Schema-aware constrained decoding
+* JSON output generation
+* Pydantic-based validation
+* Deterministic generation
+* No external function-calling APIs
 
-- Python 3.10+
-- [`uv`](https://github.com/astral-sh/uv) package manager
-- `llm_sdk` (provided separately — place it in the project root)
+---
 
-### Installation
+## Project Structure
 
-```bash
-git clone <your-repo-url>
-cd call-me-maybe
-uv sync
-```
-
-### Running the program
-
-```bash
-uv run python -m src
-
-uv run python -m src \
-  --functions_definition data/input/functions_definition.json \
-  --input data/input/function_calling_tests.json \
-  --output data/output/function_calls.json
-```
-
-### Other Makefile commands
-
-```bash
-make install
-make run
-make debug
-make lint
-make lint-strict
-make clean
-```
-
-### Directory structure
-
-```
+```text
 call-me-maybe/
 ├── src/
 │   ├── __init__.py
 │   ├── __main__.py
 │   ├── main.py
+│   ├── models.py
 │   ├── data_loader.py
 │   ├── prompt_builder.py
 │   ├── generator.py
@@ -153,32 +85,192 @@ call-me-maybe/
 
 ---
 
-## Example Usage
+## Algorithm Explanation
 
-**Input prompt:** `"Replace all vowels in 'Programming is fun' with asterisks"`
+### Overview
 
-**Output:**
+The implementation relies on **constrained decoding**, a generation technique that restricts the set of tokens the model is allowed to produce at each step.
+
+Unlike traditional text generation, where the model may generate any token from its vocabulary, constrained decoding filters invalid tokens before selecting the next one.
+
+This guarantees that the generated output remains valid throughout the entire generation process.
+
+### Step 1: Function Selection
+
+The first stage consists of selecting the appropriate function.
+
+1. All available function names are loaded from the function definition file.
+2. Function names are tokenized in advance.
+3. During generation, only tokens that can continue a valid function name remain available.
+4. All other token probabilities are masked.
+5. Generation stops when a complete valid function name has been produced.
+
+For example, if the valid functions are:
+
+```text
+fn_add_numbers
+fn_subtract_numbers
+fn_get_square_root
+```
+
+and generation starts with:
+
+```text
+fn_
+```
+
+only tokens that can continue one of the valid names are allowed.
+
+### Step 2: Argument Extraction
+
+After selecting the function, the corresponding schema is loaded.
+
+For each parameter:
+
+1. The model receives the user prompt and function context.
+2. Allowed tokens are restricted according to the parameter type.
+3. The generated value is validated before being accepted.
+
+Examples:
+
+* Integer parameters only accept valid integer values.
+* Float parameters only accept valid floating-point values.
+* String parameters must produce valid JSON strings.
+* Required parameters must always be generated.
+
+### Step 3: JSON Assembly
+
+Once all parameters have been generated:
+
+1. The function name and arguments are assembled.
+2. The result is converted into a JSON object.
+3. The JSON is validated against the schema.
+
+Example:
+
 ```json
 {
-  "prompt": "Replace all vowels in 'Programming is fun' with asterisks",
-  "fn_name": "fn_substitute_string_with_regex",
+  "fn_name": "fn_get_square_root",
   "args": {
-    "source_string": "Programming is fun",
-    "regex": "[aeiouAEIOU]",
-    "replacement": "*"
+    "a": 16
   }
 }
 ```
 
-**Input prompt:** `"What is the square root of 16?"`
+This process ensures both:
 
-**Output:**
+* Syntactic validity (valid JSON)
+* Semantic validity (schema-compliant output)
+
+---
+
+## Design Decisions
+
+### Constrained Decoding
+
+Constrained decoding was chosen because it guarantees structured outputs and prevents invalid generations.
+
+Without constraints, the model could:
+
+* Generate unknown function names
+* Produce malformed JSON
+* Return invalid argument types
+
+### Two-Stage Generation
+
+Function selection and argument generation are handled separately.
+
+Advantages:
+
+* Simpler implementation
+* Easier debugging
+* Better control over generation constraints
+
+### Pydantic Validation
+
+Pydantic is used to:
+
+* Validate loaded schemas
+* Validate generated outputs
+* Provide clear error messages
+
+### Local Inference
+
+The project uses a local model instead of external APIs to ensure reproducibility and independence from third-party services.
+
+---
+
+## Instructions
+
+### Requirements
+
+* Python 3.10+
+* uv
+
+### Installation
+
+```bash
+git clone <repository-url>
+cd call-me-maybe
+uv sync
+```
+
+### Run
+
+Default execution:
+
+```bash
+uv run python -m src
+```
+
+Custom input and output files:
+
+```bash
+uv run python -m src \
+    --functions_definition data/input/functions_definition.json \
+    --input data/input/function_calling_tests.json \
+    --output data/output/function_calls.json
+```
+
+---
+
+## Example Usage
+
+### Example 1
+
+Input:
+
+```text
+What is the sum of 2 and 3?
+```
+
+Output:
+
 ```json
 {
-  "prompt": "What is the square root of 16?",
+  "fn_name": "fn_add_numbers",
+  "args": {
+    "a": 2,
+    "b": 3
+  }
+}
+```
+
+### Example 2
+
+Input:
+
+```text
+What is the square root of 16?
+```
+
+Output:
+
+```json
+{
   "fn_name": "fn_get_square_root",
   "args": {
-    "a": 16.0
+    "a": 16
   }
 }
 ```
@@ -187,62 +279,138 @@ call-me-maybe/
 
 ## Performance Analysis
 
-| Metric | Result |
-|---|---|
-| JSON validity | 100% — guaranteed by constrained decoding |
-| Function selection accuracy | >90% on provided test set |
-| Argument extraction accuracy | >90% on provided test set |
-| Processing time | <5 minutes for the full test set |
-| Reliability across runs | Deterministic (greedy decoding, no sampling) |
+### Accuracy
 
-Constrained decoding ensures **zero JSON parse errors** regardless of model quality. The bottleneck is numeric argument extraction for models that have poor digit tokenization — mitigated by restricting to a tight allowed character set.
+The constrained decoding strategy prevents the generation of unknown function names and significantly reduces invalid outputs.
+
+Generated results are validated against the provided schema before being accepted.
+
+### Speed
+
+The solution remains efficient because invalid tokens are filtered early in the generation process.
+
+Although masking introduces additional computation, the overhead is minimal compared to the cost of model inference.
+
+### Reliability
+
+The implementation consistently produces:
+
+* Valid JSON structures
+* Valid function names
+* Correctly typed arguments
+
+This makes the system more reliable than unrestricted text generation approaches.
 
 ---
 
 ## Challenges Faced
 
-### 1. Token boundary mismatch
-A function name like `fn_add_numbers` may be tokenized as `["fn", "_add", "_numbers"]`. The mask must allow **all individual token IDs** that compose any valid name, not just the full-name token. Solved by pre-computing the union of all token IDs for all characters and sub-tokens of each function name.
+### Function Name Tokenization
 
-### 2. EOS token diversity
-Small models use inconsistent end-of-sequence tokens (`</s>`, `<|end|>`, `<|im_end|>`, `<|endoftext|>`). The generator checks for all known variants and splits on the first match to avoid including EOS bytes in the output.
+Different function names may be split into multiple tokens by the tokenizer.
 
-### 3. Argument context drift
-Without appending previously generated arguments to the prompt, the model would ignore prior context and generate inconsistent or repeated values. The running-prompt approach resolved this.
+**Solution:**
 
-### 4. Type coercion edge cases
-Models sometimes generate `"3.0"` for an integer field or whitespace-padded values. Explicit `.strip()`, `.rstrip(",} \n")`, and `.strip("\"'")` cleaning steps before type casting handle these cases.
+All valid function names were pre-tokenized and generation was restricted to valid token continuations.
+
+### Generation Termination
+
+Determining when generation should stop can be difficult.
+
+**Solution:**
+
+Explicit stopping conditions were added for completed function names and completed parameter values.
+
+### Type Enforcement
+
+The model may generate values with incorrect types.
+
+**Solution:**
+
+Parameter-specific constraints and validation rules were applied during generation.
+
+### Schema Validation
+
+Generated outputs must exactly match the required schema.
+
+**Solution:**
+
+Pydantic models were used to validate outputs before writing them to the final JSON file.
 
 ---
 
 ## Testing Strategy
 
-- **Unit testing per module**: each of `data_loader`, `prompt_builder`, `generator`, and `processor` was tested independently with mocked model outputs.
-- **Error injection**: invalid JSON, missing files, wrong types, and empty inputs were tested against `data_loader` to verify graceful error messages.
-- **End-to-end testing**: all 11 prompts from `function_calling_tests.json` were run and outputs validated against expected function names and argument types.
-- **JSON schema validation**: output files were parsed with `json.load()` post-run to confirm 100% parse success.
-- **Moulinette**: the provided grading script was used as the final validation pass.
+The implementation was validated using several approaches.
+
+### Unit Testing
+
+Individual components were tested independently:
+
+* Function loading
+* Schema validation
+* Token masking
+* Argument extraction
+
+### Integration Testing
+
+The entire pipeline was tested from:
+
+```text
+User Prompt
+    ↓
+Function Selection
+    ↓
+Argument Generation
+    ↓
+JSON Validation
+```
+
+### Dataset Testing
+
+The provided test dataset was executed multiple times to verify deterministic and consistent outputs.
+
+### Output Validation
+
+Every generated result was checked to ensure:
+
+* Valid JSON syntax
+* Existing function names
+* Correct parameter types
+* Schema compliance
+
+### Moulinette Evaluation
+
+The final implementation was validated using the official Moulinette evaluation process.
 
 ---
 
 ## Resources
 
-### Official Documentation
-- [Hugging Face Transformers](https://huggingface.co/docs/transformers) — model loading and tokenization
-- [Qwen3-0.6B Model Card](https://huggingface.co/Qwen/Qwen3-0.6B) — base model used
-- [Pydantic v2 Docs](https://docs.pydantic.dev/) — data validation
-- [uv Documentation](https://docs.astral.sh/uv/) — package manager
+### Documentation
 
-### Articles & References
-- [Outlines: Structured Text Generation](https://github.com/outlines-dev/outlines) — inspiration for constrained decoding approach
-- [Guidance: Constrained Generation](https://github.com/guidance-ai/guidance) — alternative constrained decoding library
-- [JSON Mode in LLMs — Survey](https://arxiv.org/abs/2403.06988) — academic overview of structured generation
-- [Function Calling in OpenAI API](https://platform.openai.com/docs/guides/function-calling) — reference for output format design
+* Hugging Face Transformers Documentation
+* Pydantic Documentation
+* Python Documentation
+* JSON Schema Documentation
+* uv Documentation
+
+### Articles and Tutorials
+
+* Function Calling with LLMs
+* Structured Generation Techniques
+* Constrained Decoding for Language Models
+* Tokenization and Text Generation
 
 ### AI Usage
-AI tools were used in a limited and controlled manner for the following tasks:
-- Generating test prompts.
-- Brainstorming implementation ideas and alternative approaches.
-- Assisting with debugging and identifying potential issues.
-- Suggesting code improvements and refactoring opportunities.
-- Improving documentation and writing docstrings.
+
+AI tools were used during the development of this project for:
+
+* Understanding constrained decoding concepts
+* Reviewing implementation ideas
+* Debugging Python code
+* Improving documentation quality
+* Generating and refining test cases
+* Refactoring and code quality suggestions
+
+All design decisions, implementation details, and final code were reviewed and validated manually.

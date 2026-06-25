@@ -31,5 +31,5 @@ class Prompt(BaseModel):
 class FunctionCall(BaseModel):
     """The output result for a single processed prompt."""
     prompt: str
-    fn_name: str
-    args: dict[str, Any]
+    name: str
+    parameters: dict[str, Any]

@@ -86,8 +86,8 @@ def build_json_result(
     """Assemble the final output dict from prompt, name, and arguments."""
     result = FunctionCall(
         prompt=prompt,
-        fn_name=name,
-        args=parameters,
+        name=name,
+        parameters=parameters,
     )
     return result.model_dump()
 
